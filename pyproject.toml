@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "QUBO-based office seating optimizer"
 readme = "README.md"
 license = { text = "Apache-2.0" }
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 authors = [
     { name = "Marc Breiner Sørensen", email = "mbrs@phys.au.dk" }
 ]
@@ -26,7 +26,6 @@ dependencies = [
     "pydantic>=2.0.0",
     "numpy>=1.26.0",
     "dimod>=0.12.0",
-    "neal>=0.6.0",
     "dwave-samplers>=1.0.0",
 ]
 
@@ -42,7 +41,7 @@ dev = [
 Homepage = "https://github.com/achnos/qseat"
 Issues = "https://github.com/achnos/qseat/issues"
 
-[tool.hatchling.build.targets.wheel]
+[tool.hatch.build.targets.wheel]
 packages = ["src/seating_optimizer"]
 
 [tool.ruff]
