@@ -1,0 +1,336 @@
+\documentclass[10pt]{article}
+\usepackage{iftex}
+\ifPDFTeX
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel} %english language
+\usepackage{microtype} %better kerning
+\fi
+\usepackage{graphicx}
+\usepackage[a4paper]{geometry}
+\setlength{\columnsep}{6mm}
+
+
+\usepackage[backend=biber, sorting=none]{biblatex}
+\addbibresource{references.bib}
+
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{amsthm}
+\usepackage{amsmath}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\usepackage{manfnt}
+\usepackage{bbm}
+\usepackage{mathtools}
+
+\usepackage{caption}
+\usepackage{array}
+\usepackage{microtype}
+
+\usepackage{hyperref}
+
+\usepackage{cleveref}
+\usepackage{tikz}
+\usetikzlibrary{positioning, fit, backgrounds}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{example}[definition]{Example}
+
+\theoremstyle{plain}
+\newtheorem{theorem}[definition]{Theorem}
+\newtheorem{proposition}[definition]{Proposition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[definition]{Remark}
+
+
+\title{\Large\textbf{QSeat}\\Quantum Seating Optimization}
+
+\author{Marc Breiner Sørensen}
+\date{\normalsize\today}
+
+\begin{document}
+	\maketitle
+	\tableofcontents
+	
+	\section{Introduction}
+	In this note we shall derive a so-called \emph{Quadratic Unconstrained Binary Optimization} (QUBO) formulation for optimizing seating in the context of office spaces. This problem consists of a trade-off optimization between the interests of management and engineering teams in a flexible-seating context. The problem has equivalence with the well-known graph problem of a \textit{weighted quadratic assignment problem} (QAP). The QUBO formulation encompasses a rich class of combinatorial optimization problems that are in general known to be $\mathcal{NP}$-hard, of which QAP is a special case that is indeed seen to be of this same complexity class.
+	
+	We first give a general introduction to QUBO problems containing the appropriate definitions. We then pose the particular problem statement after which a specific formulation to solve it is presented.
+	
+	\section{Graphs}
+	
+	\begin{definition}[Graph]
+		A \emph{graph} is a pair $G = (V, E)$ where $V$ is a set of \emph{vertices} (or \emph{nodes})
+		and $E \subseteq \binom{V}{2}$ is a set of \emph{edges}, i.e.\ unordered pairs of distinct
+		vertices. If $E$ is a multiset and self-loops $\{v,v\}$ are permitted, $G$ is called a
+		\emph{multigraph}. A \emph{directed graph} (digraph) replaces $E$ with a set of ordered pairs
+		$A \subseteq V \times V$, called \emph{arcs}.
+	\end{definition}
+	
+	\begin{definition}[Degree]
+		For $v \in V$, the \emph{degree} $\deg(v) := |\{e \in E : v \in e\}|$ counts the edges
+		incident to $v$. In a digraph, one distinguishes \emph{in-degree} $\deg^-(v)$ and
+		\emph{out-degree} $\deg^+(v)$.
+	\end{definition}
+	
+	\section{QUBO formulations in general}
+	Let $\mathbb{B}^n$ be the \textit{n}-dimensional vector space over the binary field $\mathbb {B}$.  An example is $(1, 0, 0) = 4$ for $n=3$. QUBO problems are binary optimization problems that consist of finding the argument $x\in\mathbb{B}^n$, which minimizes some unconstrained pseudo-boolean function $C(x): \mathbb{B}^n\rightarrow\mathbb{R}$,
+	which may be formulated as quadratic forms. Formally QUBO problems are defined as
+	\begin{align}
+		& \argmin_{x\in\mathbb{B}^n}\,\, C(x) \\
+		& C(x) = \mathbf{x}^\top Q\, \mathbf{x}, 
+	\end{align}
+	The matrix $Q$ is typically referred to as the QUBO matrix and it defines the problem. Note that due to $x_i^2 = x_i$ the diagonal of $Q$ represent linear terms. Furthermore, since the $x_i$'s are simply numbers, it is symmetric in the sense that $x_ix_j = x_jx_i = \frac12x_ix_j + \frac12x_jx_i$, so there exists an equivalent formulations with either symmetric or upper triangular matrices. The function $C(x)$ is often referred to as the \emph{cost function}. 
+	In our optimization context we shall be concerned with minimizing such a cost function. In this sense the cost function encodes the information that guides our choice of permutation.
+	
+	\section{Problem statement}
+	In this section we pose the algebraic entities needed to set up the QUBO problem. 
+	
+	\subsection{Preliminaries}
+	We will assume a time block $T\in\mathbb{N}$ for which to optimize the seating schedule. $T$ can be any number of integer periods, and will have an implicit unit associated with it. For example, $T=5$ may represent $5$ \emph{workdays}, such that $T$ in this case represents a week. We will make use of this specific assumption in the following. 
+	
+	Let $r\in\{1,2,\dots,R\}$, for $r,R\in\mathbb{N}$, be an enumeration of the available rooms, and $\mathcal{R}_r$ be the set of seat indices belonging to room $r$. Each room is assumed to have $n_r$ seats, such that $S = \sum_{r=1}^{R} n_r$ with $S\in\mathbb{N}$ being the total number of seats in the optimization problem. 
+	
+	\subsection{Problem geometry}
+	
+	We pose a binary matrix $A\in\mathbb{B}^{S+1 \times S+1}$ encoding the room geometry, with $A_{kl}=1$ if seats $k$ and $l$ are adjacent, for $k,l\in\{1,2,S+1\}$. There are two choices in constructing $A$. Either one may choose non-zero entries only for directly adjacent (neighbouring) seats, or one may choose non-zero entries for any combination of $k,l$ for $k,l\in R_r$ for some room r. This choice is purely one of design and necessity. For some teams it may be necessary to enforce strict adjacency, while for other larger teams, simply seating them within the same office room is sufficient. Additionally the latter choice may be more convenient for smaller room sizes. In any case the particular realization of $A$ in the end depends on the rooms that are part of the optimization task. 
+	
+	$A_{kl}$ is equivalent to an adjacency matrix for a graph, where each room is a partition into disjoint subgraphs indexed by $r$ with vertex labels from the set $\mathcal{R}_r$, such that joining disjoint subgraphs denoted by $G_i = \left(\mathcal{R}_i, \{A_{kl}|k,l\in \mathcal{R}_i\}\right)$ as $G = \sqcup_i G_i$ (the disjoint union of subgraphs) produces a graph which represents the problem at hand.
+		
+	We also note that since $A$ has equivalence to a graph adjacency matrix, conventionally $A_{kl} = A_{lk}$ since the graph is undirected. This implies a symmetric tensor. We, however, choose to represent the tensor by an upper triangular matrix representation for interpretative and algorithmic purposes, even though the graph representing our problem is undirected in the strict sense. From this we additionally choose the convention that $A_{kk = 0} \forall k$, since this self-adjacency will be shown to relate to self-affinity that in turn also rewards employees seated at the same desk, for reasons that will be clear later. Additionally this slightly reduces the density of the resulting QUBO matrix, which is marginally better for solvers.
+	
+	The matrix representation of $A$ will show geometric structures pertaining to this graph such as triangles and disjointedness.
+	
+	We now present an example with $R=2, S=8, \mathcal{R}_1=\{1,2,3,4,5\}, \mathcal{R}_2=\{6,7,8\}$ for which the matrix representation of $A$ is given by
+	\begin{equation}
+		A = \begin{bmatrix}
+			0 & 1 & 1 & 0 & 0 & 0 & 0 & 0 & 0 \\
+			0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 \\
+			0 & 0 & 0 & 1 & 1 & 0 & 0 & 0 & 0 \\
+			0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 \\
+			0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+			0 & 0 & 0 & 0 & 0 & 0 & 1 & 1 & 0 \\
+			0 & 0 & 0 & 0 & 0 & 0 & 0 & 1 & 0 \\
+			0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+			0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 
+		\end{bmatrix},
+	\end{equation}
+	which, as noted above, displays geoetric properties of the graph such as the two triangles, and a block structure displaying the disjointedness. This $A$ matrix encodes the problem represented by the graph in figure \ref{fig:G}.
+	\begin{figure}[h!]
+		\centering
+			\begin{tikzpicture}[
+				node/.style={draw, circle, fill=gray!20, minimum size=0.6cm, font=\small},
+				every edge/.style={draw, thick},
+				]
+				
+				%% ── Left graph (nodes 1–5) ─────────────────────────────────────────────
+				\node[node] (n1) at (0,-1.4) {1};
+				\node[node] (n2) at (0,0)    {2};
+				\node[node] (n3) at (1.4,0)  {3};
+				\node[node] (n4) at (2.8,0)  {4};
+				\node[node] (n5) at (2.8,-1.4) {5};
+				
+				\draw[thick] (n1) -- node[below] {$A_{13}$}(n3);
+				\draw[thick] (n2) -- node[above] {$A_{23}$}(n3);
+				\draw[thick] (n3) -- node[above] {$A_{34}$}(n4);
+				\draw[thick] (n4) -- node[right] {$A_{45}$}(n5);
+				\draw[thick] (n2) -- node[left]  {$A_{21}$}(n1);
+				\draw[thick] (n3) -- node[below] {$A_{35}$}(n5);
+				
+				\begin{scope}[on background layer]
+					\node[draw, rounded corners=8pt, dashed,
+					fit=(n1)(n2)(n3)(n4)(n5),
+					inner sep=14pt,
+					label=above:{$G_1$}] (box1) {};
+				\end{scope}
+				
+				%% ── Right graph (nodes 6–8) ────────────────────────────────────────────
+				\node[node] (n7) at (5,0)    {7};
+				\node[node] (n8) at (6.4,0)  {8};
+				\node[node] (n6) at (5,-1.4) {6};
+				
+				\draw[thick] (n7) -- node[above] {$A_{78}$}(n8);
+				\draw[thick] (n7) -- node[left] {$A_{67}$}(n6);
+				\draw[thick] (n8) -- node[right] {$A_{68}$}(n6);
+				
+				\begin{scope}[on background layer]
+					\node[draw, rounded corners=8pt, dashed,
+					fit=(n6)(n7)(n8),
+					inner sep=14pt,
+					label=above:{$G_2$}] (box2) {};
+				\end{scope}
+				
+			\end{tikzpicture}
+			\caption{Room geometry from the example represented as two disjoint subgraphs $G_i=(V_i, E_i)$. }
+			\label{fig:G}
+		\end{figure}
+		If one does not care about immediate adjacency of seats but only whether seats are within the same room, this corresponds to forming the fully connected graph instead, which results in several additional non-zero elements in the matrix representation of $A$ and corresponds to an explicit relaxation of the optimization problem.
+	
+	
+	
+	\subsection{The assignment matrix}
+	Given $N\in\mathbb{N}$ employees to be seated, we may construct a binary matrix $X\in \mathbb{B}^{N\times S+1}$ of size $N \times S+1$, with indices $n,s\in\mathbb{N}$ representing respectively employees and seats, such that $X_{ns} = 1$ denotes that employee $n$ is assigned to seat $s$ for the week. Note that while $n\in\{1,2,\dots,N\}$ the seat index runs up to $S+1$ as $s\in\{1,2,\dots,S+1\}$ to allow an assignment to no seat, represented by the value $s = S+1$ such that $X_{n(S+1)}=1$ denotes that employee $n$ was not assigned to any seat during $T$, which might be the case if $N > S$ in which case no complete assignment of all employees is possible. 
+	\begin{equation}
+		X = \overbrace{
+			\begin{bmatrix}
+				X_{11} & \cdots & X_{1(S+1)} \\
+				\vdots & \ddots & \vdots \\
+				X_{N1} & \cdots & X_{N(S+1)}
+			\end{bmatrix}
+		}^{\displaystyle S+1}
+		\left.
+		\vphantom{
+			\begin{bmatrix}
+				X_{11} \\ \vdots \\ X_{N1}
+			\end{bmatrix}
+		}
+		\right\} N
+	\end{equation}
+	$X$ is a rank-2 tensor with a block form as
+	\begin{equation}
+		X = \begin{bmatrix}
+			\begin{bmatrix}
+				X_{11} & \cdots & X_{1(S+1)} \\
+			\end{bmatrix}\\
+			\vdots \\
+			\begin{bmatrix}
+				X_{i1} & \cdots & X_{i(S+1)}
+			\end{bmatrix}\\
+			\vdots\\
+			\begin{bmatrix}
+				X_{N1} & \cdots & X_{N(S+1)}
+			\end{bmatrix}\\
+		\end{bmatrix},
+	\end{equation}
+	such that each row of $X$ is a one-hot encoded block (vector) of length $S+1$, with the $i$'th entry being set to $1$ and all other being $0$. This structure ensures that every employee is  assigned at most one seat.
+	Consider an example with $N=6, S=4$ - so five employees to be assigned to just four seats. We may write the matrix as
+	\begin{equation}
+		X = \begin{bmatrix}
+				0 & 0 & 0 & 1 & 0 \\
+				1 & 0 & 0 & 0 & 0\\
+				0 & 0 & 1 & 0 & 0\\
+				0 & 0 & 0 & 0 & 1\\
+				0 & 1 & 0 & 0 & 0\\
+				0 & 0 & 0 & 0 & 1\\
+			\end{bmatrix},
+	\end{equation}
+	which represents an assignment where employee 1 sits at seat 4, employee 2 sits at seat 1, employee 3 sits at seat 3, employee 5 sits at seat 2 and employees 4 and 6 have no seats for the week.
+	
+	Notice also the structure of the matrix. Excluding the last column, each column only has a single non-zero entry, while each of the rows have only one non-zero entry. This particular structure will be enforced with constraints to be defined below.
+	
+	Each row has exactly one 1, and each non-null column has at most one 1. If every seat were filled (i.e. $N=M$ and no null assignments), $X$ would be a permutation matrix, which is a square binary matrix with exactly one 1 per row and per column, which is a special case of an orthogonal matrix since $XX^T = I$ and $X^TX=I$. In our relaxed rectangular case ($N\times(M+1)$, with possible null assignments and empty seats), $X$ is a doubly stochastic matrix in structure. More precisely it belongs to the set of partial permutation matrices, where each row has exactly one $1$ but columns may have zero or one $1$. In linear algebra terms each row of $X$ is a standard basis vector $e_k\in\{0,1\}^{M+1}$, where the position of the 1 indicates the assigned seat. The set of all standard basis vectors forms an orthonormal basis for $\mathbb{R}^{M+1}$, and crucially they are mutually orthogonal:
+	\begin{equation}
+		e_k\cdot e_l=\delta_{kl}
+	\end{equation}
+	This orthogonality is what enforces the one-hot constraint.
+	
+	\subsection{Employee attendance}
+	In finding the right assignment of seats, we wish to consider the attendance of a given employee within the time period $T$. For $T$ in units of days, we wish to attribute greater weight to those employees that are present the most days. Employees may be sick, have scheduled time off, vacation, or be working from home. We pose the matrix $W\in\mathbb{B}^{N \times T}$, where $T=5$ for a workweek. $W_{nt} = 1$ if employee $n$ is present at the office on day $t,$ for $t\in\{1,\dots,T\}$. We continue our example from before with $N=6, T=5$.
+	
+	\begin{equation}
+		W = \begin{bmatrix}
+			1 & 1 & 1 & 1 & 1 \\
+			1 & 1 & 1 & 0 & 0 \\
+			1 & 1 & 1 & 0 & 0 \\
+			1 & 0 & 1 & 1 & 1 \\
+			1 & 1 & 1 & 1 & 1 \\
+			1 & 1 & 1 & 1 & 1 
+		\end{bmatrix}
+	\end{equation}
+	representing the case where employees 1, 4, 5 and 6 are present at the office every day of the week, while employees 2 and 3 are off-site Thursday and Friday, and employee 4 is off-site on Tuesday.
+	
+	\subsection{Employee relations}
+	Our solution must take into account the necessity for two or more employees to be seated adjacently. We represent these relationships with the matrix $P\in\mathbb{B}^{N\times N}$, where $P_{nm} = C$ is equal to some constant $C\in\mathbb{R}$, which describes the degree of necessity, or affinity, of employee $n$ to be seated next to employee $m$. 
+	
+	Note that $P$ is equivalent to a digraph $G$ representing employee relations. In this sense $P$ is a weighted adjacency matrix where in general $P_{nm} \neq P_{mn}$ since the two employees may not hold the same affinity for one another. The support of $P$ is symmetric. 
+	If $P_{nm}\neq 0$ then $P_{mn} \neq 0$ but the values $P_{nm}$ and $P_{mn}$ can differ, reflecting asymmetric desire. Expanding on our running example for $N = 6$ a realization of $P$ could be (here denoting only $P_{nm}$ for non-zero entries).
+	
+	\begin{equation}
+		P = \begin{bmatrix}
+			0  		& P_{12} & P_{13} & 0      & 0 		& 0			\\	
+			P_{21} 	& 0      & P_{23} & 0      & 0 		& P_{26} 	\\
+			P_{31} 	& P_{32} & 0      & P_{34} & P_{35} & P_{36}	\\
+			0 		& 0	     & P_{43} & 0      & 0 		& 0			\\
+			0 		& 0		 & P_{53} & 0      & 0 		& 0			\\
+			0 		& P_{62} & P_{63} & 0      & 0 		& 0			\\
+		\end{bmatrix}
+	\end{equation}
+	which corresponds to the graph
+	\begin{figure}[h!]
+		\centering
+		\begin{tikzpicture}[
+			node/.style={draw, circle, fill=gray!20, minimum size=0.6cm, font=\small},
+			every edge/.style={draw, thick},
+			]
+			
+			%% ── Left graph (nodes 1–5) ─────────────────────────────────────────────
+			\node[node] (n1) at (0,-1.4) {1};
+			\node[node] (n2) at (0,0)    {2};
+			\node[node] (n3) at (1.4,0)  {3};
+			\node[node] (n4) at (2.8,0)  {4};
+			\node[node] (n5) at (2.8,-1.4) {5};
+			\node[node] (n6) at (1.4,1.4) {6};
+			
+			\draw[thick] (n1) -- node[below] {$P_{13/31}$}(n3);
+			\draw[thick] (n2) -- node[above] {$P_{23/32}$}(n3);
+			\draw[thick] (n3) -- node[above] {$P_{34/43}$}(n4);
+			\draw[thick] (n2) -- node[left]  {$P_{21/12}$}(n1);
+			\draw[thick] (n3) -- node[right] {$P_{35/53}$}(n5);
+			\draw[thick] (n3) -- node[right] {$P_{36/63}$}(n6);
+			\draw[thick] (n2) -- node[left] {$P_{26/62}$}(n6);
+			
+			
+		\end{tikzpicture}
+		\caption{Room geometry from the example represented as two disjoint subgraphs $G_i=(V_i, E_i)$. }
+		\label{fig:G}
+	\end{figure}
+	
+	\subsection{Fixed seating}
+	Some employees might, for one reason or the other, require a fixed seat during the period of optimization. Such a constraint may be enforced on the problem via introduction of a binary matrix $F\in\mathbb{B}^{N\times S}$ where $F_{ns} = 1$ means employee $n$ must be seated at seat $s$. We continue with our running example for $N=6, S=4, T=5$.
+	\begin{equation}
+		F = \begin{bmatrix}
+			0 & 0 & 0 & 0 \\
+			0 & 0 & 0 & 0 \\
+			0 & 1 & 0 & 0 \\
+			0 & 0 & 0 & 0 \\
+			0 & 0 & 0 & 0 \\
+			0 & 0 & 0 & 1
+		\end{bmatrix}
+	\end{equation}
+	representing the case where employee 3 must be assigned to seat 2, while employee 6 must be assigned to seat 4.
+	
+	\section{Relation to Quadratic Assignment Problems}
+	The Quadratic Assignment Problem (QAP) consist of the following problem: given two graphs - a flow graph on entities and a distance graph on locations - find the assignment of entities to locations that maximizes flow between co-located entities. For our case this means
+	\begin{itemize}
+		\item \textbf{Flow graph:} employees as vertices, edge weights $P_{nm}$ - how much employees $n$ and $m$ need to be near each other.
+		\item \textbf{Distance graph}: seats as nodes, edge weights $A_{kl}$ - which seats are adjacent
+	\end{itemize}
+	The QAP is one of the hardest combinatorial optimization problems known - it's NP-hard and in practice notoriously difficult even for moderate sizes. This is part of the motivation for attacking it with quantum-inspired solutions rather than exact solvers, as exhaustive enumeration of solutions is an infeasible approach in any practical scale of inputs.
+	The null seat and room structure are extensions on top of the base QAP. The null seat introduces a partial assignment variant, and the room constraint on $A$ (block structure where $A_{kl}=0$ across rooms) gives the distance graph a specific sparse topology that solvers can potentially exploit.
+	
+	\section{The full QUBO formulation}
+	We now have all of the components that define our problem. In order to exploit algorithms to solve QUBO problems we simply have left to put the pieces together in a formulation of the form $x^TQx$.
+	If we begin by vectorizing $X$, by flattening it into a $1D$-array, we may write
+	\begin{equation}
+		\argmin_{x\in\mathbb{B}^n} x^T Q x
+	\end{equation}
+	if we identify
+	\begin{equation}
+		Q = - \sum_{ijkl}\tilde{P}_{ij} A_{kl}\cdot e_{ik} e_{jl}^T + \lambda_1 P_1 + \lambda_2 P_2 + \lambda_3 P_3
+	\end{equation}
+	where the augmented intra-day affinity matrix $\tilde{P}$ is
+	\begin{equation}
+		\tilde{P}_{ij} = P_{ij}\sum_{d=1}^T W_{id}W_{jd}
+	\end{equation}
+	
+	and the penalty terms, that enforce our identified constraints are given by
+	\begin{align}
+		P_{\text{row}} &= \sum_{i=1}^{N} \left(1 - \sum_{k=1}^{S+1} X_{ik}\right)^2\\
+		P_{\text{col}} &= \sum_{k=1}^{S} \sum_{i < j} X_{ik} X_{jk}\\
+		P_{\text{fixed}} &= \sum_{i,k} F_{ik}(1 - X_{ik})^2 
+		+ \sum_{i} \mathbf{1}[\exists k : F_{ik} = 1] \sum_{l \neq k} X_{il}^2
+	\end{align}
+	
+\end{document}

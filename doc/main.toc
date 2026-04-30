@@ -1,0 +1,13 @@
+\babel@toc {english}{}\relax 
+\contentsline {section}{\numberline {1}Introduction}{1}{section.1}%
+\contentsline {section}{\numberline {2}Graphs}{1}{section.2}%
+\contentsline {section}{\numberline {3}QUBO formulations in general}{2}{section.3}%
+\contentsline {section}{\numberline {4}Problem statement}{2}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Preliminaries}{2}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Problem geometry}{2}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}The assignment matrix}{3}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}Employee attendance}{5}{subsection.4.4}%
+\contentsline {subsection}{\numberline {4.5}Employee relations}{5}{subsection.4.5}%
+\contentsline {subsection}{\numberline {4.6}Fixed seating}{6}{subsection.4.6}%
+\contentsline {section}{\numberline {5}Relation to Quadratic Assignment Problems}{6}{section.5}%
+\contentsline {section}{\numberline {6}The full QUBO formulation}{6}{section.6}%
