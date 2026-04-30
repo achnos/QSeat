@@ -5,15 +5,14 @@ employees, rooms, seats, attendance schedules, and pairwise affinities, QSeat co
 an optimal weekly seating plan using quantum-inspired combinatorial optimization running 
 on standard CPU hardware.
 
-The problem is formally equivalent to a **Weighted Quadratic Assignment Problem (QAP)** 
-— one of the hardest known combinatorial optimization problems (NP-hard) — and is solved 
+The problem is formally equivalent to a **Weighted Quadratic Assignment Problem (QAP)** (an NP-hard problem), and is solved 
 via a QUBO formulation amenable to simulated annealing and tabu search samplers.
 
 ## Features
 
 - Handles multiple rooms with arbitrary desk counts
 - Supports fixed seat assignments (accessibility, management requirements, etc.)
-- Accounts for daily attendance — employees absent all week are automatically unassigned
+- Accounts for daily attendance: employees absent all week are automatically unassigned
 - Null-seat mechanism gracefully handles cases where employees exceed available seats
 - Swappable solver backend (simulated annealing, tabu search)
 - REST API via FastAPI for integration with frontends and data pipelines
@@ -27,7 +26,7 @@ A brief summary follows.
 
 | Symbol | Dimensions | Description |
 |--------|------------|-------------|
-| $P$ | $N \times N$ | Pairwise employee affinity matrix. $P_{nm}$ encodes how much employee $n$ needs to sit near employee $m$. In general asymmetric — symmetrized before solving. |
+| $P$ | $N \times N$ | Pairwise employee affinity matrix. $P_{nm}$ encodes how much employee $n$ needs to sit near employee $m$. In general asymmetric but symmetrized before solving. |
 | $W$ | $N \times T$ | Attendance matrix. $W_{nt} = 1$ if employee $n$ is onsite on day $t$. $T = 5$ for a workweek. |
 | $F$ | $N \times S$ | Fixed assignment matrix. $F_{ns} = 1$ if employee $n$ must be assigned to seat $s$. |
 | $A$ | $(S+1) \times (S+1)$ | Seat adjacency matrix. $A_{kl} = 1$ if seats $k$ and $l$ are adjacent. Upper triangular, zero diagonal. Last row and column are zero (null seat). |
@@ -36,7 +35,7 @@ A brief summary follows.
 
 $X \in \mathbb{B}^{N \times (S+1)}$ is the assignment matrix, where $X_{ns} = 1$ means 
 employee $n$ is assigned to seat $s$ for the week. The $(S+1)$-th column is a **null 
-seat** — employees assigned here receive no physical seat, allowing the problem to remain 
+seat**: employees assigned here receive no physical seat, allowing the problem to remain 
 feasible when $N > S$. Each row of $X$ is a one-hot encoded vector (a standard basis 
 vector), making $X$ a partial permutation matrix.
 
@@ -44,11 +43,11 @@ vector), making $X$ a partial permutation matrix.
 
 Before constructing the QUBO, three elimination steps reduce problem size:
 
-1. **Absent employees** — any employee with $\sum_t W_{nt} = 0$ is immediately 
+1. **Absent employees** : any employee with $\sum_t W_{nt} = 0$ is immediately 
 null-assigned and removed from the problem.
-2. **Fixed assignments** — employees with $F_{ns} = 1$ are assigned directly via 
+2. **Fixed assignments** : employees with $F_{ns} = 1$ are assigned directly via 
 variable elimination, removing them and their seat from the free variables.
-3. **Affinity modulation** — the raw affinity matrix is scaled by shared attendance days:
+3. **Affinity modulation** : the raw affinity matrix is scaled by shared attendance days:
 
 $$\tilde{P}_{nm} = P_{nm} \cdot \sum_{t=1}^{T} W_{nt} W_{mt}$$
 
