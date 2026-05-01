@@ -1,5 +1,8 @@
 # QSeat
 
+**Maintainer:** Marc Breiner Sørensen  
+**License:** Apache-2.0
+
 **QSeat** is an open-source, QUBO-based office seating optimizer. Given a set of 
 employees, rooms, seats, attendance schedules, and pairwise affinities, QSeat computes 
 an optimal weekly seating plan using quantum-inspired combinatorial optimization running 
