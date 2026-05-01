@@ -331,6 +331,177 @@
 		P_{\text{col}} &= \sum_{k=1}^{S} \sum_{i < j} X_{ik} X_{jk}\\
 		P_{\text{fixed}} &= \sum_{i,k} F_{ik}(1 - X_{ik})^2 
 		+ \sum_{i} \mathbf{1}[\exists k : F_{ik} = 1] \sum_{l \neq k} X_{il}^2
-	\end{align}
+	\end{align} 
+	
+	We wish to give a clear picture of the penalty terms, as well as the direct representation of the $Q$ matrix elements. Before we do this, we give an overview of using the technique of \textit{variable elimination} to reduce the complexity of the QUBO before annealing.	
+	
+	\section{Variable Elimination}
+	
+	Before constructing the QUBO matrix, we may reduce the size of the problem by 
+	identifying variables whose values are known \textit{a priori}, and substituting 
+	these known values directly into the objective and constraint terms. This procedure 
+	is known as \emph{variable elimination}, and it reduces both the number of free 
+	variables and the size of the resulting QUBO matrix, which is beneficial for solver 
+	performance.
+	
+	\subsection{Elimination of absent employees}
+	
+	Recall the modulated affinity matrix
+	\begin{equation}
+		\tilde{P}_{nm} = P_{nm} \sum_{t=1}^{T} W_{nt} W_{mt}.
+	\end{equation}
+	If employee $n$ has no attendance during the period $T$, i.e. $\sum_t W_{nt} = 0$, 
+	then $\tilde{P}_{nm} = 0$ for all $m$. Employee $n$ contributes nothing to the 
+	affinity objective regardless of their seat assignment, and assigning them a real 
+	seat wastes a seat that could be allocated to an attending employee. We therefore 
+	set $X_{n(S+1)} = 1$ and $X_{ns} = 0$ for all $s \leq S$, and remove all variables 
+	$\{X_{ns}\}_{s=1}^{S+1}$ from the problem entirely.
+	
+	\subsection{Elimination of fixed-seat employees}
+	
+	Suppose employee $n^*$ has a fixed seat assignment, i.e. $F_{n^* s^*} = 1$ for some 
+	$s^* \leq S$. Then we know with certainty that
+	\begin{equation}
+		X_{n^* s^*} = 1, \qquad X_{n^* s} = 0 \;\forall s \neq s^*, \qquad 
+		X_{n s^*} = 0 \;\forall n \neq n^*.
+	\end{equation}
+	We substitute these values directly into the objective. Consider the affinity terms 
+	involving employee $n^*$:
+	\begin{equation}
+		-\sum_{m, s, s'} \tilde{P}_{n^* m} A_{s^* s'} X_{n^* s^*} X_{m s'} 
+		= -\sum_{m, s'} \tilde{P}_{n^* m} A_{s^* s'} X_{m s'},
+	\end{equation}
+	where we have substituted $X_{n^* s^*} = 1$. This term, which was previously 
+	quadratic in $X$, is now \emph{linear} in $X_{ms'}$. In QUBO notation, linear 
+	terms correspond to diagonal entries of the QUBO matrix $Q$, since 
+	$x_\mu^2 = x_\mu$ for binary variables. Specifically, for each active employee $m$ 
+	and each seat $s'$, the value $-\tilde{P}_{n^* m} A_{s^* s'}$ is added to the 
+	diagonal entry $Q_{\mu\mu}$ where $\mu$ is the flattened index corresponding to 
+	$(m, s')$.
+	
+	This means that fixed-seat employees are removed as decision variables — they do 
+	not appear as rows or columns in the reduced QUBO matrix — yet their affinity 
+	relationships with active employees are preserved as linear biases on the active 
+	employees' seat variables. The column constraint for seat $s^*$ is also trivially 
+	satisfied and may be dropped from $P_\text{col}$.
+	
+	\subsection{The reduced problem}
+	
+	Let $\mathcal{N}_\text{active} \subseteq \{1, \dots, N\}$ denote the set of 
+	employees remaining after both elimination steps, with $N_\text{active} = 
+	|\mathcal{N}_\text{active}|$. The reduced assignment matrix $\hat{X} \in 
+	\mathbb{B}^{N_\text{active} \times (S+1)}$ contains only the rows corresponding 
+	to active employees, and the reduced QUBO matrix has dimensions
+	\begin{equation}
+	Q \in \mathbb{R}^{N_\text{active}(S+1) \times N_\text{active}(S+1)}.
+	\end{equation}
+	The index mapping $\mu = n \cdot (S+1) + s$ relates each flattened variable 
+	$x_\mu$ to the pair $(n, s)$ in the reduced problem. A bookkeeping structure 
+	records the correspondence between reduced indices and original employee 
+	identifiers, enabling the solver output to be translated back to the full employee 
+	set after optimization:
+	\begin{equation}
+	\texttt{employee\_index\_map} = \begin{cases}
+		\texttt{no\_attendance} & \{n : \sum_t W_{nt} = 0\} \\
+		\texttt{pre\_fixed} & \{n \mapsto s^* : F_{ns^*} = 1\} \\
+		\texttt{active} & \{\hat{n} \mapsto n : n \in \mathcal{N}_\text{active}\}
+	\end{cases}
+	\end{equation}
+	where $\hat{n}$ denotes the reduced index of an active employee.
+	
+	\subsection{Linear bias from fixed employees}
+	
+	The full set of linear bias corrections from all fixed-seat employees is collected 
+	before constructing the QUBO. For each fixed employee $n^* \in \texttt{pre\_fixed}$ 
+	with assigned seat $s^*$, and for each active employee $\hat{n}$ with original index 
+	$n$, the diagonal bias is
+	\begin{equation}
+	\Delta Q_{\mu\mu} = -\tilde{P}_{n^* n} A_{s^* s'}, 
+	\qquad \mu = \hat{n} \cdot (S+1) + s',
+	\end{equation}
+	summed over all fixed employees $n^*$. These corrections are added to the diagonal 
+	of $Q$ after the quadratic terms have been assembled.
+	
+	\subsection{Structure of the QUBO matrix elements}
+	
+	The QUBO matrix $Q$ is most naturally understood as a rank-4 tensor 
+	before flattening. Given the double index structure of $X_{ns}$, we write the 
+	matrix elements as $Q_{ns, ms'}$, which after applying the flattening map 
+	$\mu(n,s) = n \cdot (S+1) + s$ correspond to $Q_{\mu(n,s),\mu(m,s')}$. 
+	The full matrix element is
+	
+	\begin{equation}
+		Q_{ns,ms'} = -\tilde{P}_{nm} A_{ss'} 
+		+ \lambda_1 [P_{\text{row}}]_{ns,ms'} 
+		+ \lambda_2 [P_{\text{col}}]_{ns,ms'},
+	\end{equation}
+	
+	and we now expand each contribution.
+	
+	\paragraph{Affinity term.}
+	The affinity contribution is simply
+	\begin{equation}
+		-\tilde{P}_{nm} A_{ss'},
+	\end{equation}
+	which is non-zero only when employees $n$ and $m$ have nonzero affinity and seats 
+	$s$ and $s'$ are adjacent. This term is purely off-diagonal in the employee indices 
+	when $n \neq m$.
+	
+	\paragraph{Row penalty.}
+	Expanding $P_\text{row} = \sum_n \left(1 - \sum_s X_{ns}\right)^2$ yields
+	\begin{equation}
+		P_\text{row} = \sum_n \left(1 - 2\sum_s X_{ns} + \sum_s \sum_{s'} X_{ns} X_{ns'}\right).
+	\end{equation}
+	The quadratic term $\sum_{s,s'} X_{ns}X_{ns'}$ contributes to elements with the 
+	\emph{same} employee index $n = m$, giving
+	\begin{equation}
+		[P_{\text{row}}]_{ns,ms'} = \mathbf{1}[n = m],
+	\end{equation}
+	i.e. a constant $1$ for all seat pairs $(s, s')$ belonging to the same employee. 
+	The linear term $-2X_{ns}$ contributes to the diagonal $n=m, s=s'$ as $-2$, which 
+	combined with the quadratic term gives a net diagonal contribution of $-1$ and 
+	off-diagonal (same employee, different seats) contribution of $+1$.
+	
+	\paragraph{Column penalty.}
+	Expanding $P_\text{col} = \sum_s \sum_{n < m} X_{ns} X_{ms}$ gives
+	\begin{equation}
+		[P_{\text{col}}]_{ns,ms'} = \mathbf{1}[s = s'] \cdot \mathbf{1}[n \neq m],
+	\end{equation}
+	i.e. a constant $+1$ for all employee pairs $(n,m)$ sharing the same real seat 
+	$s = s' \leq S$, and zero otherwise. This term is purely off-diagonal in the 
+	employee indices and block-diagonal in the seat indices.
+	
+	\paragraph{Diagonal elements.}
+	Collecting all contributions to the diagonal $\mu = \mu(n,s)$, i.e. $n=m, s=s'$:
+	\begin{equation}
+		Q_{\mu\mu} = -\tilde{P}_{nn} A_{ss} - \lambda_1 + \Delta Q_{\mu\mu},
+	\end{equation}
+	where $A_{ss} = 0$ by convention and $\tilde{P}_{nn}$ encodes self-affinity, 
+	which is typically zero. The $-\lambda_1$ term arises from the linear part of 
+	$P_\text{row}$, and $\Delta Q_{\mu\mu}$ collects any linear bias from fixed-seat 
+	employees as described in the previous section. The diagonal therefore simplifies to
+	\begin{equation}
+		Q_{\mu\mu} = -\lambda_1 + \Delta Q_{\mu\mu}.
+	\end{equation}
+	
+	\paragraph{Summary.}
+	The full element structure is collected in Table~\ref{tab:qubo_elements}.
+	
+	\begin{table}[h!]
+		\centering
+		\begin{tabular}{llll}
+			\hline
+			Condition & $n=m$ & $s=s'$ & $Q_{ns,ms'}$ \\
+			\hline
+			Diagonal & \checkmark & \checkmark & $-\lambda_1 + \Delta Q_{\mu\mu}$ \\
+			Same employee, different seats & \checkmark & $\times$ & $+\lambda_1 - \tilde{P}_{nn}A_{ss'}$ \\
+			Different employees, same seat & $\times$ & \checkmark & $+\lambda_2 - \tilde{P}_{nm}A_{ss}$ \\
+			Different employees, different seats & $\times$ & $\times$ & $-\tilde{P}_{nm}A_{ss'}$ \\
+			\hline
+		\end{tabular}
+		\caption{Structure of the QUBO matrix elements $Q_{ns,ms'}$ by index case. 
+			Note $A_{ss}=0$ by convention, simplifying the third row to $+\lambda_2$.}
+		\label{tab:qubo_elements}
+	\end{table}
 	
 \end{document}
