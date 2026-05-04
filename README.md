@@ -1,10 +1,10 @@
-# QSeat
+# QuESO
 
 **Maintainer:** Marc Breiner Sørensen  
 **License:** Apache-2.0
 
-**QSeat** is an open-source, QUBO-based office seating optimizer. Given a set of 
-employees, rooms, seats, attendance schedules, and pairwise affinities, QSeat computes 
+**QuESO** (Quantum Enhanced Seat Optimizer) is an open-source, QUBO-based office seating optimizer. Given a set of 
+employees, rooms, seats, attendance schedules, and pairwise affinities, QuESO computes 
 an optimal weekly seating plan using quantum-inspired combinatorial optimization running 
 on standard CPU hardware.
 
@@ -85,14 +85,14 @@ to ensure no constraint violation is energetically favourable.
 ## Installation
 
 ```bash
-pip install qseat
+pip install queso
 ```
 
 For development:
 
 ```bash
-git clone https://github.com/yourname/qseat
-cd qseat
+git clone https://github.com/achnos/QuESO
+cd QuESO
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
