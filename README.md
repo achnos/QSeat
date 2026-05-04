@@ -1,4 +1,4 @@
-# QuESO
+# QuESO 🧀
 
 **Maintainer:** Marc Breiner Sørensen  
 **License:** Apache-2.0
