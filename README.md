@@ -22,7 +22,7 @@ via a QUBO formulation amenable to simulated annealing and tabu search samplers.
 
 ## Model
 
-A full mathematical derivation is available in [`docs/model.pdf`](docs/model.pdf). 
+A full mathematical derivation is available in [`docs/main.pdf`](docs/main.pdf). 
 A brief summary follows.
 
 ### Inputs
