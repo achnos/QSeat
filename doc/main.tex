@@ -45,21 +45,53 @@
 \newtheorem{remark}[definition]{Remark}
 
 
-\title{\Large\textbf{QSeat}\\Quantum Seating Optimization}
+\title{\Large\textbf{QuESO}\\Quantum Enhanced Seat Optimizer}
 
 \author{Marc Breiner Sørensen}
 \date{\normalsize\today}
 
 \begin{document}
 	\maketitle
+	
+	\begin{abstract}
+	\noindent \textbf{QuESO} (Quantum Enhanced Seat Optimizer), is a quadratic unconstrained 
+	binary optimization (QUBO) formulation for the office seating assignment problem. 
+	The problem is cast as a weighted quadratic assignment problem (WQAP) over two graphs: 
+	a flow graph encoding pairwise employee affinities and a distance graph encoding office 
+	seat adjacency. The formulation accommodates an arbitrary number of rooms with 
+	configurable geometry, variable employee attendance over a discrete time period, fixed 
+	seat constraints, and the case where the number of employees exceeds the number of 
+	available seats. The latter is handled through introduction of a null seat, rendering 
+	the problem always feasible and allowing the optimizer to jointly determine seating 
+	assignments and identify unassigned employees. Attendance data modulates pairwise 
+	affinities to reflect shared onsite time, and a variable elimination preprocessing step 
+	reduces problem size by removing absent and fixed-seat employees prior to optimization. 
+	The resulting QUBO matrix is derived in closed form, with explicit expressions for all 
+	matrix elements and their contributions from the objective and constraint penalty terms. 
+	The formulation is solver-agnostic and is implemented in the open source package 
+	\texttt{QuESO}, targeting CPU-based quantum-inspired annealers.
+	\end{abstract}
+	
+	\newpage
 	\tableofcontents
-	
 	\section{Introduction}
-	In this note we shall derive a so-called \emph{Quadratic Unconstrained Binary Optimization} (QUBO) formulation for optimizing seating in the context of office spaces. This problem consists of a trade-off optimization between the interests of management and engineering teams in a flexible-seating context. The problem has equivalence with the well-known graph problem of a \textit{weighted quadratic assignment problem} (QAP). The QUBO formulation encompasses a rich class of combinatorial optimization problems that are in general known to be $\mathcal{NP}$-hard, of which QAP is a special case that is indeed seen to be of this same complexity class.
+	We derive a \emph{Quadratic Unconstrained Binary Optimization} (QUBO) formulation for optimizing seating in the context of office spaces. The problem has equivalence with the well-known graph problem of a \textit{weighted quadratic assignment problem} (WQAP). QUBO formulations encompasses a rich class of combinatorial optimization problems that are in general known to be $\mathcal{NP}$-hard.
 	
-	We first give a general introduction to QUBO problems containing the appropriate definitions. We then pose the particular problem statement after which a specific formulation to solve it is presented.
+	We begin by giving a definition of QUBO problems. 
 	
-	\section{Graphs}
+	\begin{definition}[QUBO]
+		Let $\mathbb{B}^n$ be the \textit{n}-dimensional vector space over the binary field $\mathbb {B}$. QUBO problems are binary optimization problems that consist of finding the argument $x\in\mathbb{B}^n$, which minimizes some unconstrained pseudo-boolean function $C(x): \mathbb{B}^n\rightarrow\mathbb{R}$,
+		which may be formulated as quadratic forms. 
+		\begin{align}
+			& \argmin_{x\in\mathbb{B}^n}\,\, C(x) \\
+			& C(x) = \mathbf{x}^\top Q\, \mathbf{x}, 
+		\end{align}
+	\end{definition}
+	An example of a vector from $\mathbb{B}^n$ is $(1, 0, 0) = 4$ for $n=3$. The matrix $Q$ is typically referred to as the QUBO matrix and it completely defines the problem. Note that due to $x_i^2 = x_i$ the diagonal of $Q$ represent linear terms. Furthermore, since the $x_i$'s are simply numbers, it is symmetric: $x_ix_j = x_jx_i = \frac12x_ix_j + \frac12x_jx_i$. Hence, there exists equivalent formulations with either symmetric or upper triangular matrices. The function $C(x)$ is often referred to as the \emph{cost function}. 
+	
+	In our optimization context we shall be concerned with minimizing such a cost function. The cost function encodes the information that guides our choice of permutation. 
+	
+	WQAP can be visualized as a graph-problem. We thus give a definition of a graph.	
 	
 	\begin{definition}[Graph]
 		A \emph{graph} is a pair $G = (V, E)$ where $V$ is a set of \emph{vertices} (or \emph{nodes})
@@ -69,37 +101,28 @@
 		$A \subseteq V \times V$, called \emph{arcs}.
 	\end{definition}
 	
-	\begin{definition}[Degree]
-		For $v \in V$, the \emph{degree} $\deg(v) := |\{e \in E : v \in e\}|$ counts the edges
-		incident to $v$. In a digraph, one distinguishes \emph{in-degree} $\deg^-(v)$ and
-		\emph{out-degree} $\deg^+(v)$.
-	\end{definition}
-	
-	\section{QUBO formulations in general}
-	Let $\mathbb{B}^n$ be the \textit{n}-dimensional vector space over the binary field $\mathbb {B}$.  An example is $(1, 0, 0) = 4$ for $n=3$. QUBO problems are binary optimization problems that consist of finding the argument $x\in\mathbb{B}^n$, which minimizes some unconstrained pseudo-boolean function $C(x): \mathbb{B}^n\rightarrow\mathbb{R}$,
-	which may be formulated as quadratic forms. Formally QUBO problems are defined as
-	\begin{align}
-		& \argmin_{x\in\mathbb{B}^n}\,\, C(x) \\
-		& C(x) = \mathbf{x}^\top Q\, \mathbf{x}, 
-	\end{align}
-	The matrix $Q$ is typically referred to as the QUBO matrix and it defines the problem. Note that due to $x_i^2 = x_i$ the diagonal of $Q$ represent linear terms. Furthermore, since the $x_i$'s are simply numbers, it is symmetric in the sense that $x_ix_j = x_jx_i = \frac12x_ix_j + \frac12x_jx_i$, so there exists an equivalent formulations with either symmetric or upper triangular matrices. The function $C(x)$ is often referred to as the \emph{cost function}. 
-	In our optimization context we shall be concerned with minimizing such a cost function. In this sense the cost function encodes the information that guides our choice of permutation.
+	We do not give a formal definition of WQAP, but instead explain it in relation to the problem at hand. The WQAP consist of the following problem: given two graphs - a flow graph on entities and a distance graph on locations - find the assignment of entities to locations that maximizes flow between co-located entities. For our case this means
+	\begin{itemize}
+		\item \textbf{Flow graph:} employees as vertices, edge weights $P_{nm}$ - how much employees $n$ and $m$ need to be near each other.
+		\item \textbf{Distance graph}: seats as nodes, edge weights $A_{kl}$ - which seats are adjacent
+	\end{itemize}
+	WQAP is notoriously difficult even for moderate sizes. Exhaustive enumeration of solutions is an infeasible approach in any practical scale of input sizes, which is part of the motivation for attacking it with quantum-inspired solutions rather than exact solvers.
 	
 	\section{Problem statement}
 	In this section we pose the algebraic entities needed to set up the QUBO problem. 
 	
 	\subsection{Preliminaries}
-	We will assume a time block $T\in\mathbb{N}$ for which to optimize the seating schedule. $T$ can be any number of integer periods, and will have an implicit unit associated with it. For example, $T=5$ may represent $5$ \emph{workdays}, such that $T$ in this case represents a week. We will make use of this specific assumption in the following. 
+	We will assume a time block $T\in\mathbb{N}$ for which to optimize the seating schedule. $T$ can be any number of integer periods, and will have an implicit unit associated with it. For example, $T=5$ may represent $5$ \emph{workdays}, such that $T$ in this case represents a workweek. We will make use of this specific assumption in the following. 
 	
 	Let $r\in\{1,2,\dots,R\}$, for $r,R\in\mathbb{N}$, be an enumeration of the available rooms, and $\mathcal{R}_r$ be the set of seat indices belonging to room $r$. Each room is assumed to have $n_r$ seats, such that $S = \sum_{r=1}^{R} n_r$ with $S\in\mathbb{N}$ being the total number of seats in the optimization problem. 
 	
 	\subsection{Problem geometry}
 	
-	We pose a binary matrix $A\in\mathbb{B}^{S+1 \times S+1}$ encoding the room geometry, with $A_{kl}=1$ if seats $k$ and $l$ are adjacent, for $k,l\in\{1,2,S+1\}$. There are two choices in constructing $A$. Either one may choose non-zero entries only for directly adjacent (neighbouring) seats, or one may choose non-zero entries for any combination of $k,l$ for $k,l\in R_r$ for some room r. This choice is purely one of design and necessity. For some teams it may be necessary to enforce strict adjacency, while for other larger teams, simply seating them within the same office room is sufficient. Additionally the latter choice may be more convenient for smaller room sizes. In any case the particular realization of $A$ in the end depends on the rooms that are part of the optimization task. 
+	We pose a binary matrix $A\in\mathbb{B}^{S+1 \times S+1}$ encoding the room geometry, with $A_{sv}=1$ if seats $s$ and $v$ are adjacent, for $s,v\in\{1,2,S+1\}$. There are two choices in constructing $A$. Either one may choose non-zero entries only for directly adjacent (neighbouring) seats, or one may choose non-zero entries for any combination of $s,v$ for $s,v\in \mathcal{R}_r$ for some room r. For some teams it may be necessary to enforce strict adjacency, while for other larger teams, simply seating them within the same office room is sufficient. Additionally the latter choice may be more convenient for smaller room sizes. In any case the particular realization of $A$ in the end depends on the rooms that are part of the optimization task. 
 	
-	$A_{kl}$ is equivalent to an adjacency matrix for a graph, where each room is a partition into disjoint subgraphs indexed by $r$ with vertex labels from the set $\mathcal{R}_r$, such that joining disjoint subgraphs denoted by $G_i = \left(\mathcal{R}_i, \{A_{kl}|k,l\in \mathcal{R}_i\}\right)$ as $G = \sqcup_i G_i$ (the disjoint union of subgraphs) produces a graph which represents the problem at hand.
+	$A_{sv}$ is equivalent to an adjacency matrix for a graph, where each room is a partition into disjoint subgraphs indexed by $r$ with vertex labels from the set $\mathcal{R}_r$, such that joining disjoint subgraphs denoted by $G_i = \left(\mathcal{R}_i, \{A_{sv}|s,v\in \mathcal{R}_i\}\right)$ as $G = \sqcup_i G_i$ (the disjoint union of subgraphs) produces a graph which represents the problem at hand.
 		
-	We also note that since $A$ has equivalence to a graph adjacency matrix, conventionally $A_{kl} = A_{lk}$ since the graph is undirected. This implies a symmetric tensor. We, however, choose to represent the tensor by an upper triangular matrix representation for interpretative and algorithmic purposes, even though the graph representing our problem is undirected in the strict sense. From this we additionally choose the convention that $A_{kk = 0} \forall k$, since this self-adjacency will be shown to relate to self-affinity that in turn also rewards employees seated at the same desk, for reasons that will be clear later. Additionally this slightly reduces the density of the resulting QUBO matrix, which is marginally better for solvers.
+	We also note that since $A$ has equivalence to a graph adjacency matrix, conventionally $A_{sv} = A_{sv}$ since the graph is undirected. This implies a symmetric tensor. We, however, choose to represent the tensor by an upper triangular matrix representation for interpretative and algorithmic purposes, even though the graph representing our problem is undirected in the strict sense. From this we additionally choose the convention that $A_{ss = 0} \forall s$, since this self-adjacency will be shown to relate to self-affinity that in turn also rewards employees seated at the same desk, for reasons that will be clear later. Additionally this slightly reduces the density of the resulting QUBO matrix, which is marginally better for solvers.
 	
 	The matrix representation of $A$ will show geometric structures pertaining to this graph such as triangles and disjointedness.
 	
@@ -166,12 +189,12 @@
 			\caption{Room geometry from the example represented as two disjoint subgraphs $G_i=(V_i, E_i)$. }
 			\label{fig:G}
 		\end{figure}
-		If one does not care about immediate adjacency of seats but only whether seats are within the same room, this corresponds to forming the fully connected graph instead, which results in several additional non-zero elements in the matrix representation of $A$ and corresponds to an explicit relaxation of the optimization problem.
+		If one does not care about immediate adjacency of seats but only whether seats are within the same room, this corresponds to forming the fully connected graph instead, which results in several additional non-zero elements in the matrix representation of $A$ and corresponds to a relaxation of the optimization problem.
 	
 	
 	
 	\subsection{The assignment matrix}
-	Given $N\in\mathbb{N}$ employees to be seated, we may construct a binary matrix $X\in \mathbb{B}^{N\times S+1}$ of size $N \times S+1$, with indices $n,s\in\mathbb{N}$ representing respectively employees and seats, such that $X_{ns} = 1$ denotes that employee $n$ is assigned to seat $s$ for the week. Note that while $n\in\{1,2,\dots,N\}$ the seat index runs up to $S+1$ as $s\in\{1,2,\dots,S+1\}$ to allow an assignment to no seat, represented by the value $s = S+1$ such that $X_{n(S+1)}=1$ denotes that employee $n$ was not assigned to any seat during $T$, which might be the case if $N > S$ in which case no complete assignment of all employees is possible. 
+	Given $N\in\mathbb{N}$ employees to be seated, we may construct a binary matrix $X\in \mathbb{B}^{N\times S+1}$ of size $N \times S+1$, with indices $n,s\in\mathbb{N}$ representing respectively employees and seats, such that $X_{ns} = 1$ denotes that employee $n$ is assigned to seat $s$ for the week. Note that while $n\in\{1,2,\dots,N\}$ the seat index runs up to $S+1$ as $s\in\{1,2,\dots,S+1\}$ to allow an assignment to a "null" seat (no seat), represented by the value $s = S+1$ such that $X_{n(S+1)}=1$ denotes that employee $n$ was not assigned to any seat during $T$, which might be the case if $N > S$ in which case no complete assignment of all employees is possible. 
 	\begin{equation}
 		X = \overbrace{
 			\begin{bmatrix}
@@ -194,7 +217,7 @@
 			\begin{bmatrix}
 				X_{11} & \cdots & X_{1(S+1)} \\
 			\end{bmatrix}\\
-			\vdots \\
+			\vdots \\¨
 			\begin{bmatrix}
 				X_{i1} & \cdots & X_{i(S+1)}
 			\end{bmatrix}\\
@@ -218,13 +241,8 @@
 	\end{equation}
 	which represents an assignment where employee 1 sits at seat 4, employee 2 sits at seat 1, employee 3 sits at seat 3, employee 5 sits at seat 2 and employees 4 and 6 have no seats for the week.
 	
-	Notice also the structure of the matrix. Excluding the last column, each column only has a single non-zero entry, while each of the rows have only one non-zero entry. This particular structure will be enforced with constraints to be defined below.
-	
-	Each row has exactly one 1, and each non-null column has at most one 1. If every seat were filled (i.e. $N=M$ and no null assignments), $X$ would be a permutation matrix, which is a square binary matrix with exactly one 1 per row and per column, which is a special case of an orthogonal matrix since $XX^T = I$ and $X^TX=I$. In our relaxed rectangular case ($N\times(M+1)$, with possible null assignments and empty seats), $X$ is a doubly stochastic matrix in structure. More precisely it belongs to the set of partial permutation matrices, where each row has exactly one $1$ but columns may have zero or one $1$. In linear algebra terms each row of $X$ is a standard basis vector $e_k\in\{0,1\}^{M+1}$, where the position of the 1 indicates the assigned seat. The set of all standard basis vectors forms an orthonormal basis for $\mathbb{R}^{M+1}$, and crucially they are mutually orthogonal:
-	\begin{equation}
-		e_k\cdot e_l=\delta_{kl}
-	\end{equation}
-	This orthogonality is what enforces the one-hot constraint.
+	Notice also the structure of the matrix. Excluding the last column, each column only has at most one non-zero entry, while each of the rows have exactly one non-zero entry. This particular structure will be enforced with constraints to be defined below.
+	If every seat were filled (i.e. $N=M$ and no null assignments), $X$ would be a permutation matrix, which is a special case of an orthogonal matrix since $XX^T = I$ and $X^TX=I$. In our relaxed rectangular case ($N\times(M+1)$, with possible null assignments and empty seats), $X$ is a doubly stochastic matrix in structure. More precisely it belongs to the set of partial permutation matrices. In linear algebra terms, each row of $X$ is a standard basis vector $e_k\in\{0,1\}^{S+1}$, where the position of the 1 indicates the assigned seat, and seats form an orthonormal basis with representation $e_k$. 
 	
 	\subsection{Employee attendance}
 	In finding the right assignment of seats, we wish to consider the attendance of a given employee within the time period $T$. For $T$ in units of days, we wish to attribute greater weight to those employees that are present the most days. Employees may be sick, have scheduled time off, vacation, or be working from home. We pose the matrix $W\in\mathbb{B}^{N \times T}$, where $T=5$ for a workweek. $W_{nt} = 1$ if employee $n$ is present at the office on day $t,$ for $t\in\{1,\dots,T\}$. We continue our example from before with $N=6, T=5$.
@@ -239,13 +257,13 @@
 			1 & 1 & 1 & 1 & 1 
 		\end{bmatrix}
 	\end{equation}
-	representing the case where employees 1, 4, 5 and 6 are present at the office every day of the week, while employees 2 and 3 are off-site Thursday and Friday, and employee 4 is off-site on Tuesday.
+	representing the case where employees 1, 5 and 6 are present at the office every day of the week, while employees 2 and 3 are off-site Thursday and Friday, and employee 4 is off-site on Tuesday.
 	
 	\subsection{Employee relations}
-	Our solution must take into account the necessity for two or more employees to be seated adjacently. We represent these relationships with the matrix $P\in\mathbb{B}^{N\times N}$, where $P_{nm} = C$ is equal to some constant $C\in\mathbb{R}$, which describes the degree of necessity, or affinity, of employee $n$ to be seated next to employee $m$. 
+	Probably most importantly, our solution must take into account the necessity for two or more employees to be seated adjacently. We represent these relationships with the matrix $P\in\mathbb{B}^{N\times N}$, where $P_{nm} = C$ is equal to some constant $C\in\mathbb{R}$, which describes the degree of necessity, or affinity, of employee $n$ to be seated next to employee $m$. 
 	
-	Note that $P$ is equivalent to a digraph $G$ representing employee relations. In this sense $P$ is a weighted adjacency matrix where in general $P_{nm} \neq P_{mn}$ since the two employees may not hold the same affinity for one another. The support of $P$ is symmetric. 
-	If $P_{nm}\neq 0$ then $P_{mn} \neq 0$ but the values $P_{nm}$ and $P_{mn}$ can differ, reflecting asymmetric desire. Expanding on our running example for $N = 6$ a realization of $P$ could be (here denoting only $P_{nm}$ for non-zero entries).
+	Note that $P$ is equivalent to a digraph $G$ representing employee relations. In this sense $P$ is a weighted adjacency matrix where in general $P_{nm} \neq P_{mn}$ since the two employees may not hold the same affinity for one another. 
+	Expanding on our running example for $N = 6$ a realization of $P$ could be (here denoting only $P_{nm}$ for non-zero entries).
 	
 	\begin{equation}
 		P = \begin{bmatrix}
@@ -300,40 +318,29 @@
 		\end{bmatrix}
 	\end{equation}
 	representing the case where employee 3 must be assigned to seat 2, while employee 6 must be assigned to seat 4.
-	
-	\section{Relation to Quadratic Assignment Problems}
-	The Quadratic Assignment Problem (QAP) consist of the following problem: given two graphs - a flow graph on entities and a distance graph on locations - find the assignment of entities to locations that maximizes flow between co-located entities. For our case this means
-	\begin{itemize}
-		\item \textbf{Flow graph:} employees as vertices, edge weights $P_{nm}$ - how much employees $n$ and $m$ need to be near each other.
-		\item \textbf{Distance graph}: seats as nodes, edge weights $A_{kl}$ - which seats are adjacent
-	\end{itemize}
-	The QAP is one of the hardest combinatorial optimization problems known - it's NP-hard and in practice notoriously difficult even for moderate sizes. This is part of the motivation for attacking it with quantum-inspired solutions rather than exact solvers, as exhaustive enumeration of solutions is an infeasible approach in any practical scale of inputs.
-	The null seat and room structure are extensions on top of the base QAP. The null seat introduces a partial assignment variant, and the room constraint on $A$ (block structure where $A_{kl}=0$ across rooms) gives the distance graph a specific sparse topology that solvers can potentially exploit.
+
 	
 	\section{The full QUBO formulation}
-	We now have all of the components that define our problem. In order to exploit algorithms to solve QUBO problems we simply have left to put the pieces together in a formulation of the form $x^TQx$.
-	If we begin by vectorizing $X$, by flattening it into a $1D$-array, we may write
+	We now have all of the components that define our problem. In order to exploit algorithms to solve QUBO problems we simply have left to put the pieces together in a formulation of the form
 	\begin{equation}
-		\argmin_{x\in\mathbb{B}^n} x^T Q x
-	\end{equation}
-	if we identify
+		\argmin_{x\in\mathbb{B}^n} x^T Q x.
+	\end{equation} 
+	If we begin by vectorizing $X$, by flattening it into a $1D$-array, and identify the QUBO matrix
 	\begin{equation}
-		Q = - \sum_{ijkl}\tilde{P}_{ij} A_{kl}\cdot e_{ik} e_{jl}^T + \lambda_1 P_1 + \lambda_2 P_2 + \lambda_3 P_3
+		Q = - \sum_{nmsv}\tilde{P}_{nm} A_{sv}\cdot e_{ns} e_{mv}^T + \lambda_1 P_1 + \lambda_2 P_2 + \lambda_3 P_3,
 	\end{equation}
 	where the augmented intra-day affinity matrix $\tilde{P}$ is
 	\begin{equation}
-		\tilde{P}_{ij} = P_{ij}\sum_{d=1}^T W_{id}W_{jd}
+		\tilde{P}_{nm} = P_{nm}\sum_{t=1}^T W_{nt}W_{mt},
 	\end{equation}
-	
 	and the penalty terms, that enforce our identified constraints are given by
 	\begin{align}
-		P_{\text{row}} &= \sum_{i=1}^{N} \left(1 - \sum_{k=1}^{S+1} X_{ik}\right)^2\\
-		P_{\text{col}} &= \sum_{k=1}^{S} \sum_{i < j} X_{ik} X_{jk}\\
-		P_{\text{fixed}} &= \sum_{i,k} F_{ik}(1 - X_{ik})^2 
-		+ \sum_{i} \mathbf{1}[\exists k : F_{ik} = 1] \sum_{l \neq k} X_{il}^2
+		P_{\text{row}} &= \sum_{n=1}^{N} \left(1 - \sum_{s=1}^{S+1} X_{ns}\right)^2\\
+		P_{\text{col}} &= \sum_{s=1}^{S} \sum_{n < m} X_{ns} X_{ms}\\
+		P_{\text{fixed}} &= \sum_{n,s} F_{ns}(1 - X_{ns})^2 
+		+ \sum_{n} \mathbf{1}[\exists s : F_{ns} = 1] \sum_{v \neq s} X_{nv}^2,
 	\end{align} 
-	
-	We wish to give a clear picture of the penalty terms, as well as the direct representation of the $Q$ matrix elements. Before we do this, we give an overview of using the technique of \textit{variable elimination} to reduce the complexity of the QUBO before annealing.	
+	then we have a valid QUBO form. We unpack these contributions in the following. Before we do this, we give an overview of using the technique of \textit{variable elimination} to reduce the complexity of the QUBO before annealing.	
 	
 	\section{Variable Elimination}
 	
@@ -359,8 +366,8 @@
 	
 	\subsection{Elimination of fixed-seat employees}
 	
-	Suppose employee $n^*$ has a fixed seat assignment, i.e. $F_{n^* s^*} = 1$ for some 
-	$s^* \leq S$. Then we know with certainty that
+	Suppose employee $n^*$ has a fixed seat assignment $s^*$, i.e. $F_{n^* s^*} = 1$ for some 
+	$s^* \leq S, n^* \leq N$. Then we know with certainty that
 	\begin{equation}
 		X_{n^* s^*} = 1, \qquad X_{n^* s} = 0 \;\forall s \neq s^*, \qquad 
 		X_{n s^*} = 0 \;\forall n \neq n^*.
@@ -368,16 +375,16 @@
 	We substitute these values directly into the objective. Consider the affinity terms 
 	involving employee $n^*$:
 	\begin{equation}
-		-\sum_{m, s, s'} \tilde{P}_{n^* m} A_{s^* s'} X_{n^* s^*} X_{m s'} 
-		= -\sum_{m, s'} \tilde{P}_{n^* m} A_{s^* s'} X_{m s'},
+		-\sum_{m, s, v} \tilde{P}_{n^* m} A_{s^* v} X_{n^* s^*} X_{m v} 
+		= -\sum_{m, v} \tilde{P}_{n^* m} A_{s^* v} X_{m v},
 	\end{equation}
 	where we have substituted $X_{n^* s^*} = 1$. This term, which was previously 
-	quadratic in $X$, is now \emph{linear} in $X_{ms'}$. In QUBO notation, linear 
+	quadratic in $X$, is now \emph{linear} in $X_{mv}$. In QUBO notation, linear 
 	terms correspond to diagonal entries of the QUBO matrix $Q$, since 
 	$x_\mu^2 = x_\mu$ for binary variables. Specifically, for each active employee $m$ 
-	and each seat $s'$, the value $-\tilde{P}_{n^* m} A_{s^* s'}$ is added to the 
+	and each seat $v$, the value $-\tilde{P}_{n^* m} A_{s^* v}$ is added to the 
 	diagonal entry $Q_{\mu\mu}$ where $\mu$ is the flattened index corresponding to 
-	$(m, s')$.
+	$(m, v)$, which holds info about other employees "\textit{m}" seated next to $n^*$ (if adjacent).
 	
 	This means that fixed-seat employees are removed as decision variables — they do 
 	not appear as rows or columns in the reduced QUBO matrix — yet their affinity 
@@ -416,63 +423,77 @@
 	with assigned seat $s^*$, and for each active employee $\hat{n}$ with original index 
 	$n$, the diagonal bias is
 	\begin{equation}
-	\Delta Q_{\mu\mu} = -\tilde{P}_{n^* n} A_{s^* s'}, 
-	\qquad \mu = \hat{n} \cdot (S+1) + s',
+	\Delta Q_{\mu\mu} = -\tilde{P}_{n^* n} A_{s^* v}, 
+	\qquad \mu = \hat{n} \cdot (S+1) + v,
 	\end{equation}
 	summed over all fixed employees $n^*$. These corrections are added to the diagonal 
 	of $Q$ after the quadratic terms have been assembled.
 	
-	\subsection{Structure of the QUBO matrix elements}
+	\section{Structure of the matrix elements}
 	
-	The QUBO matrix $Q$ is most naturally understood as a rank-4 tensor 
+	The QUBO matrix $Q_{nmsv}$ is most naturally understood as a rank-4 tensor 
 	before flattening. Given the double index structure of $X_{ns}$, we write the 
-	matrix elements as $Q_{ns, ms'}$, which after applying the flattening map 
-	$\mu(n,s) = n \cdot (S+1) + s$ correspond to $Q_{\mu(n,s),\mu(m,s')}$. 
+	matrix elements as $Q_{ns, mv}$, which after applying the flattening map 
+	$\mu(n,s) = n \cdot (S+1) + s$ correspond to $Q_{\mu(n,s),\mu(m,v)}$. 
 	The full matrix element is
 	
 	\begin{equation}
-		Q_{ns,ms'} = -\tilde{P}_{nm} A_{ss'} 
-		+ \lambda_1 [P_{\text{row}}]_{ns,ms'} 
-		+ \lambda_2 [P_{\text{col}}]_{ns,ms'},
+		Q_{ns,mv} = -\tilde{P}_{nm} A_{sv} 
+		+ \lambda_1 [P_{\text{row}}]_{ns,mv} 
+		+ \lambda_2 [P_{\text{col}}]_{ns,mv},
 	\end{equation}
 	
 	and we now expand each contribution.
 	
-	\paragraph{Affinity term.}
+	\subsection{Affinity term}
 	The affinity contribution is simply
 	\begin{equation}
-		-\tilde{P}_{nm} A_{ss'},
+		-\tilde{P}_{nm} A_{sv},
 	\end{equation}
 	which is non-zero only when employees $n$ and $m$ have nonzero affinity and seats 
-	$s$ and $s'$ are adjacent. This term is purely off-diagonal in the employee indices 
+	$s$ and $v$ are adjacent. This term is purely off-diagonal in the employee indices 
 	when $n \neq m$.
 	
-	\paragraph{Row penalty.}
-	Expanding $P_\text{row} = \sum_n \left(1 - \sum_s X_{ns}\right)^2$ yields
-	\begin{equation}
-		P_\text{row} = \sum_n \left(1 - 2\sum_s X_{ns} + \sum_s \sum_{s'} X_{ns} X_{ns'}\right).
-	\end{equation}
-	The quadratic term $\sum_{s,s'} X_{ns}X_{ns'}$ contributes to elements with the 
-	\emph{same} employee index $n = m$, giving
-	\begin{equation}
-		[P_{\text{row}}]_{ns,ms'} = \mathbf{1}[n = m],
-	\end{equation}
-	i.e. a constant $1$ for all seat pairs $(s, s')$ belonging to the same employee. 
-	The linear term $-2X_{ns}$ contributes to the diagonal $n=m, s=s'$ as $-2$, which 
-	combined with the quadratic term gives a net diagonal contribution of $-1$ and 
-	off-diagonal (same employee, different seats) contribution of $+1$.
+	\subsection{Row penalty}
+	Every employee must be assigned to exactly one seat (or the null seat), giving
+	an equality constraint. EExpanding $P_\text{row} = \sum_n \left(1 - \sum_s X_{ns}\right)^2$ for a fixed employee $n$ yields
+	\begin{align}
+		\left(1 - \sum_s X_{ns}\right)^2
+		&= 1 - 2\sum_s X_{ns} + \sum_s\sum_{v} X_{ns}X_{nv} \notag \\
+		&= 1 - 2\sum_s X_{ns} + \sum_s X_{ns}^2 + \sum_{s \neq v} X_{ns}X_{nv} \notag \\
+		&= 1 - \sum_s X_{ns} + \sum_{s \neq v} X_{ns}X_{nv},
+	\end{align}
+	where we used $X_{ns}^2 = X_{ns}$ for binary variables. Or the full form given as
 	
-	\paragraph{Column penalty.}
-	Expanding $P_\text{col} = \sum_s \sum_{n < m} X_{ns} X_{ms}$ gives
 	\begin{equation}
-		[P_{\text{col}}]_{ns,ms'} = \mathbf{1}[s = s'] \cdot \mathbf{1}[n \neq m],
+		P_\text{row} = \sum_n \left(1 - 2\sum_s X_{ns} + \sum_s \sum_{v} X_{ns} X_{nv}\right).
 	\end{equation}
-	i.e. a constant $+1$ for all employee pairs $(n,m)$ sharing the same real seat 
-	$s = s' \leq S$, and zero otherwise. This term is purely off-diagonal in the 
-	employee indices and block-diagonal in the seat indices.
+	The contributions to the
+	QUBO matrix are therefore a diagonal term of $-1$ per variable and a quadratic
+	coupling of $+1$ between any two seats of the same employee. Crucially, different
+	employees are never coupled by $P_\text{row}$, since the sum over $n$ is independent.
 	
-	\paragraph{Diagonal elements.}
-	Collecting all contributions to the diagonal $\mu = \mu(n,s)$, i.e. $n=m, s=s'$:
+	
+	\subsection{Column penalty}
+	One might expect the column penalty to take the analogous squared form
+	\begin{equation}
+		P_\text{col} \stackrel{?}{=} \sum_{s=1}^{S} \left(1 - \sum_n X_{ns}\right)^2,
+	\end{equation}
+	enforcing that each seat is occupied by exactly one employee. This is however
+	incorrect for two reasons. First, if $N < S$ or after variable elimination reduces
+	the active employee count, seats may legitimately be unoccupied, and the squared
+	form would penalize valid empty-seat configurations. Second, the constraint is
+	fundamentally an inequality: no seat may be shared by more than one employee, rather than the equality required by the row constraint. The correct formulation is therefore
+	\begin{equation}
+		P_\text{col} = \sum_{s=1}^{S} \sum_{n < m} X_{ns} X_{ms},
+	\end{equation}
+	which contributes $+1$ for every pair of employees assigned to the same real seat
+	and zero otherwise, with no linear term since empty seats are not penalized.
+	The null seat $s = S+1$ is excluded from the sum entirely, as arbitrarily many
+	employees may be assigned to it.
+	
+	\subsection{Diagonal elements}
+	Collecting all contributions to the diagonal $\mu = \mu(n,s)$, i.e. $n=m, s=v$:
 	\begin{equation}
 		Q_{\mu\mu} = -\tilde{P}_{nn} A_{ss} - \lambda_1 + \Delta Q_{\mu\mu},
 	\end{equation}
@@ -484,22 +505,22 @@
 		Q_{\mu\mu} = -\lambda_1 + \Delta Q_{\mu\mu}.
 	\end{equation}
 	
-	\paragraph{Summary.}
+	\subsection{Summary}
 	The full element structure is collected in Table~\ref{tab:qubo_elements}.
 	
 	\begin{table}[h!]
 		\centering
 		\begin{tabular}{llll}
 			\hline
-			Condition & $n=m$ & $s=s'$ & $Q_{ns,ms'}$ \\
+			Condition & $n=m$ & $s=v$ & $Q_{ns,mv}$ \\
 			\hline
 			Diagonal & \checkmark & \checkmark & $-\lambda_1 + \Delta Q_{\mu\mu}$ \\
-			Same employee, different seats & \checkmark & $\times$ & $+\lambda_1 - \tilde{P}_{nn}A_{ss'}$ \\
+			Same employee, different seats & \checkmark & $\times$ & $+\lambda_1 - \tilde{P}_{nn}A_{sv}$ \\
 			Different employees, same seat & $\times$ & \checkmark & $+\lambda_2 - \tilde{P}_{nm}A_{ss}$ \\
-			Different employees, different seats & $\times$ & $\times$ & $-\tilde{P}_{nm}A_{ss'}$ \\
+			Different employees, different seats & $\times$ & $\times$ & $-\tilde{P}_{nm}A_{sv}$ \\
 			\hline
 		\end{tabular}
-		\caption{Structure of the QUBO matrix elements $Q_{ns,ms'}$ by index case. 
+		\caption{Structure of the QUBO matrix elements $Q_{ns,mv}$ by index case. 
 			Note $A_{ss}=0$ by convention, simplifying the third row to $+\lambda_2$.}
 		\label{tab:qubo_elements}
 	\end{table}
