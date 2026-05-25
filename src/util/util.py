@@ -66,7 +66,7 @@ def get_real_seat_assignments(X: np.ndarray,  S: int) -> np.ndarray:
     return real_seats
 
 
-def get_best_sample(sample_set: SampleSet) -> dimod.sampleset.Sample:
+def get_best_sample(sample_set: SampleSet) -> dimod.sampleset.SampleView:
     return sample_set.first.sample
 
 
