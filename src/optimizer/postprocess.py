@@ -156,7 +156,7 @@ def objective_value(
     # Objective: -tr(P_tilde @ X @ A @ X.T)
     # Equivalent to -sum_{n,m,s,s'} P_tilde_nm * A_ss' * X_ns * X_ms'
     obj = -np.einsum(
-        "nm,ns,ss',ms'->",
+        "nm,ns,sk,mk->",
         result.P_tilde,
         X[:, :-1],
         result.A[:-1, :-1].astype(float),
